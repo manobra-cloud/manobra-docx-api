@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import fs from "fs";
-import path from "path";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
 
@@ -9,7 +9,15 @@ const app = express();
 
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
-app.use("/files", express.static(process.cwd()));
+
+const s3 = new S3Client({
+  region: process.env.WASABI_REGION,
+  endpoint: process.env.WASABI_ENDPOINT,
+  credentials: {
+    accessKeyId: process.env.WASABI_ACCESS_KEY,
+    secretAccessKey: process.env.WASABI_SECRET_KEY
+  }
+});
 
 app.get("/", (req, res) => {
   res.send("API DOCX attiva");
@@ -29,20 +37,28 @@ app.post("/generate-docx", async (req, res) => {
 
     doc.render(data);
 
-    const buf = doc.getZip().generate({
+    const buffer = doc.getZip().generate({
       type: "nodebuffer",
       compression: "DEFLATE"
     });
 
     const fileName = `documento-${Date.now()}.docx`;
-    fs.writeFileSync(fileName, buf);
+    const wasabiKey = `documenti-generati/${fileName}`;
 
-    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    await s3.send(new PutObjectCommand({
+      Bucket: process.env.WASABI_BUCKET,
+      Key: wasabiKey,
+      Body: buffer,
+      ContentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    }));
+
+    const fileUrl = `${process.env.WASABI_ENDPOINT}/${process.env.WASABI_BUCKET}/${wasabiKey}`;
 
     res.json({
       success: true,
-      fileUrl: `${baseUrl}/files/${fileName}`,
-      fileName: fileName
+      fileName,
+      wasabiKey,
+      fileUrl
     });
 
   } catch (error) {
