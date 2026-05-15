@@ -1,7 +1,10 @@
 import express from "express";
 import cors from "cors";
-import fs from "fs";
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand
+} from "@aws-sdk/client-s3";
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
 
@@ -25,9 +28,21 @@ app.get("/", (req, res) => {
 
 app.post("/generate-docx", async (req, res) => {
   try {
-    const { templatePath, data } = req.body;
+    const { templateKey, tenantId, praticaId, data } = req.body;
 
-    const content = fs.readFileSync(templatePath, "binary");
+    const templateObject = await s3.send(new GetObjectCommand({
+      Bucket: process.env.WASABI_BUCKET,
+      Key: templateKey
+    }));
+
+    const chunks = [];
+
+    for await (const chunk of templateObject.Body) {
+      chunks.push(chunk);
+    }
+
+    const content = Buffer.concat(chunks);
+
     const zip = new PizZip(content);
 
     const doc = new Docxtemplater(zip, {
@@ -43,7 +58,11 @@ app.post("/generate-docx", async (req, res) => {
     });
 
     const fileName = `documento-${Date.now()}.docx`;
-    const wasabiKey = `documenti-generati/${fileName}`;
+
+    const safeTenantId = tenantId || "tenant-test";
+    const safePraticaId = praticaId || "pratica-test";
+
+    const wasabiKey = `${safeTenantId}/documenti-generati/${safePraticaId}/${fileName}`;
 
     await s3.send(new PutObjectCommand({
       Bucket: process.env.WASABI_BUCKET,
