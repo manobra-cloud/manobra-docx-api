@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import fs from "fs";
+import path from "path";
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
 
@@ -8,6 +9,7 @@ const app = express();
 
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
+app.use("/files", express.static("."));
 
 app.get("/", (req, res) => {
   res.send("API DOCX attiva");
@@ -15,13 +17,9 @@ app.get("/", (req, res) => {
 
 app.post("/generate-docx", async (req, res) => {
   try {
-    const {
-      templatePath,
-      data
-    } = req.body;
+    const { templatePath, data } = req.body;
 
     const content = fs.readFileSync(templatePath, "binary");
-
     const zip = new PizZip(content);
 
     const doc = new Docxtemplater(zip, {
@@ -36,15 +34,21 @@ app.post("/generate-docx", async (req, res) => {
       compression: "DEFLATE"
     });
 
-    const outputPath = `output-${Date.now()}.docx`;
+    const fileName = `documento-${Date.now()}.docx`;
+    fs.writeFileSync(fileName, buf);
 
-    fs.writeFileSync(outputPath, buf);
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
 
-    res.download(outputPath);
+    res.json({
+      success: true,
+      fileUrl: `${baseUrl}/files/${fileName}`,
+      fileName: fileName
+    });
 
   } catch (error) {
     console.error(error);
     res.status(500).json({
+      success: false,
       error: error.message
     });
   }
