@@ -9,7 +9,7 @@ const app = express();
 
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
-app.use("/files", express.static("."));
+app.use("/files", express.static(process.cwd()));
 
 app.get("/", (req, res) => {
   res.send("API DOCX attiva");
